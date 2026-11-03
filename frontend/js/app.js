@@ -209,12 +209,12 @@ function updateSummary() {
 }
 
 /* ---------- Backend ---------- */
-async function fetchRisk(actualKwh, householdId) {
+async function fetchRisks(readings, householdId) {
   const response = await fetch("/api/risk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      actual_kwh: actualKwh,
+      actual_kwh: readings,
       household_id: householdId
     })
   });
@@ -245,10 +245,17 @@ function showResult(result, riskEl, statusEl) {
 
 // Calculate both risk scores independently.
 async function calculateRisks(base, projected, version, householdId) {
-  const results = await Promise.allSettled([
-    fetchRisk(base, householdId),
-    fetchRisk(projected, householdId)
-  ]);
+  let results;
+  try {
+    // One request for both readings.
+    const data = await fetchRisks([base, projected], householdId);
+    results = data.results.map(value => ({ status: "fulfilled", value }));
+  } catch (error) {
+    results = [
+      { status: "rejected", reason: error },
+      { status: "rejected", reason: error }
+    ];
+  }
 
   // Ignore outdated responses if the user changed the inputs.
   if (version !== requestVersion) return;

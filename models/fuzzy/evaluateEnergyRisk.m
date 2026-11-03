@@ -7,7 +7,12 @@ function riskScore = evaluateEnergyRisk(consumptionPct, tariff)
 %   tariff         : 0 = Off-peak, 1 = Normal, 2 = Peak
 %   riskScore      : fuzzy risk score, 0-100
 %
+%   The FIS is read from disk once and kept in memory. After rebuilding
+%   EnergyRisk.fis, run "clear evaluateEnergyRisk" (or restart the server).
+%
 %   Example: riskScore = evaluateEnergyRisk(106.25, 2);
+
+    persistent fis    % cached FIS, loaded on the first call
 
     % --- Validate inputs ---
     validateattributes(consumptionPct, {'numeric'}, ...
@@ -22,13 +27,15 @@ function riskScore = evaluateEnergyRisk(consumptionPct, tariff)
     end
 
     % --- Load the FIS saved by build_EnergyRisk.m (same folder as this file) ---
-    folder = fileparts(mfilename("fullpath"));
-    fisFile = fullfile(folder, "EnergyRisk.fis");
-    if ~isfile(fisFile)
-        error("evaluateEnergyRisk:noFIS", ...
-            "EnergyRisk.fis not found. Run build_EnergyRisk first.");
+    if isempty(fis)
+        folder = fileparts(mfilename("fullpath"));
+        fisFile = fullfile(folder, "EnergyRisk.fis");
+        if ~isfile(fisFile)
+            error("evaluateEnergyRisk:noFIS", ...
+                "EnergyRisk.fis not found. Run build_EnergyRisk first.");
+        end
+        fis = readfis(fisFile);
     end
-    fis = readfis(fisFile);
 
     % --- Fuzzify, apply rules, aggregate, defuzzify (all inside evalfis) ---
     riskScore = evalfis(fis, [double(consumptionPct), double(tariff)]);

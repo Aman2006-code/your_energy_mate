@@ -1,4 +1,3 @@
-
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import math
@@ -9,12 +8,19 @@ from .predict import predict_expected_kwh
 TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
-def get_fuzzy_inputs(household_id, actual_hourly_kwh, date_time=None):
+def get_fuzzy_inputs_batch(household_id, actual_hourly_kwh_list, date_time=None):
+    """
+    Return [[consumption_pct, tariff_code], ...], one entry per actual reading.
 
-    actual_hourly_kwh = float(actual_hourly_kwh)
-
-    if not math.isfinite(actual_hourly_kwh) or actual_hourly_kwh < 0:
-        raise ValueError("Actual consumption must be a valid non-negative number.")
+    The ANN is run only once (expected consumption for the hour does not depend
+    on the reading), so checking several readings costs the same as one.
+    """
+    readings = []
+    for value in actual_hourly_kwh_list:
+        value = float(value)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("Actual consumption must be a valid non-negative number.")
+        readings.append(value)
 
     if date_time is None:
         date_time = datetime.now(TIMEZONE)
@@ -47,10 +53,6 @@ def get_fuzzy_inputs(household_id, actual_hourly_kwh, date_time=None):
     if not math.isfinite(expected_hourly_kwh) or expected_hourly_kwh <= 0:
         raise ValueError("ANN expected consumption is zero or unavailable.")
 
-    consumption_pct = min((
-        actual_hourly_kwh / expected_hourly_kwh
-    ) * 100,300)
-
     hour = hour_start.hour
 
     if 6 <= hour < 18:
@@ -60,7 +62,17 @@ def get_fuzzy_inputs(household_id, actual_hourly_kwh, date_time=None):
     else:
         tariff_code = 0
 
-    return [round(float(consumption_pct),2), tariff_code]
+    results = []
+    for actual in readings:
+        consumption_pct = min((actual / expected_hourly_kwh) * 100, 300)
+        results.append([round(float(consumption_pct), 2), tariff_code])
+
+    return results
+
+
+def get_fuzzy_inputs(household_id, actual_hourly_kwh, date_time=None):
+    """Single-reading version (kept so existing callers keep working)."""
+    return get_fuzzy_inputs_batch(household_id, [actual_hourly_kwh], date_time)[0]
 
 
 if __name__ == "__main__":

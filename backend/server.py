@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from models.ann.live_predict import get_fuzzy_inputs
+from models.ann import predict as ann_predict
+from models.ann.live_predict import get_fuzzy_inputs_batch
 
 import matlab.engine
 
@@ -36,6 +37,16 @@ def get_engine():
             _engine = matlab.engine.start_matlab()
             _engine.addpath(str(FUZZY_DIR), nargout=0)
         return _engine
+
+
+def warm_up():
+    """Load everything slow before the first request arrives."""
+    print("Starting MATLAB and loading the ANN (this takes a moment) ...")
+    ann_predict._load_artifacts()                  # loads TensorFlow + model
+    engine = get_engine()                          # starts MATLAB
+    with _engine_lock:
+        engine.evaluateEnergyRisk(100.0, 1.0, nargout=1)   # caches the FIS
+    print("Ready.")
 
 
 TARIFF_NAMES = {0: "Off-peak", 1: "Normal", 2: "Peak"}
@@ -58,26 +69,46 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         try:
-            actual_kwh = float(data.get("actual_kwh", 0))
             household_id = data.get("household_id") or "MAC000002"
+
+            # actual_kwh may be one number or a list (batch).
+            raw = data.get("actual_kwh", 0)
+            is_batch = isinstance(raw, list)
+            readings = [float(v) for v in raw] if is_batch else [float(raw)]
+
             date_time = None
             if data.get("datetime"):
                 date_time = datetime.fromisoformat(str(data["datetime"]).replace("Z", "+00:00"))
 
-            consumption_pct, tariff = get_fuzzy_inputs(household_id, actual_kwh, date_time)
+            # One ANN run for all readings.
+            fuzzy_inputs = get_fuzzy_inputs_batch(household_id, readings, date_time)
 
             engine = get_engine()
+            results = []
             with _engine_lock:
-                risk = engine.evaluateEnergyRisk(float(consumption_pct), float(tariff), nargout=1)
+                for actual, (consumption_pct, tariff) in zip(readings, fuzzy_inputs):
+                    risk = engine.evaluateEnergyRisk(float(consumption_pct), float(tariff), nargout=1)
+                    results.append({
+                        "actual_kwh": actual,
+                        "consumption_pct": float(consumption_pct),
+                        "risk_score": float(risk),
+                    })
 
-            self._json(200, {
+            tariff = int(fuzzy_inputs[0][1])
+            payload = {
                 "household_id": household_id,
-                "actual_kwh": actual_kwh,
-                "consumption_pct": float(consumption_pct),
-                "tariff": int(tariff),
-                "tariff_name": TARIFF_NAMES.get(int(tariff), "Unknown"),
-                "risk_score": float(risk),
-            })
+                "tariff": tariff,
+                "tariff_name": TARIFF_NAMES.get(tariff, "Unknown"),
+            }
+            if is_batch:
+                payload["results"] = results
+            else:
+                payload.update(results[0])   # same shape as before for a single value
+            self._json(200, payload)
+
+        except ValueError as error:
+            # Bad input, including unknown household IDs.
+            self._json(400, {"error": str(error)})
         except Exception as error:  # noqa: BLE001 - surface any backend error to the UI
             self._json(500, {"error": str(error)})
 
@@ -95,6 +126,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     port = 8000
+    warm_up()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print("Your Energy Mate running at http://127.0.0.1:%d" % port)
     print("Press Ctrl+C to stop.")
