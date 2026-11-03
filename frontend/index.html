@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your Energy Mate</title>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 880px;
+      margin: 40px auto;
+      padding: 0 16px;
+    }
+
+    h1 { font-size: 1.4rem; text-align: center; }
+    h2 { font-size: 1rem; margin: 0 0 12px; }
+
+    .narrow {
+      max-width: 440px;
+      margin: 0 auto;
+    }
+
+    .section { margin-top: 28px; }
+
+    /* House number */
+    .house-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      padding: 0 14px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+    }
+
+    .house-input:focus-within { border-color: #16a34a; }
+
+    .house-input span { color: #777; font-weight: 600; }
+
+    .house-input input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: transparent;
+      font: inherit;
+      font-size: 1.1rem;
+      padding: 12px 0;
+      -moz-appearance: textfield;
+    }
+
+    .house-input input::-webkit-outer-spin-button,
+    .house-input input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type="range"] { width: 100%; }
+    .value { font-weight: 700; text-align: center; }
+
+    /* Appliances */
+    .appliance {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .appliance-details { display: flex; flex-direction: column; gap: 4px; }
+    .appliance-name { font-weight: 600; }
+    .appliance-usage { font-size: 0.85rem; color: #777; }
+
+    .switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+    .switch {
+      flex-shrink: 0;
+      width: 48px;
+      height: 28px;
+      border-radius: 20px;
+      background: #bbb;
+      position: relative;
+      transition: 0.2s;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      top: 3px;
+      left: 3px;
+      transition: 0.2s;
+    }
+
+    .switch-input:checked + .switch { background: #16a34a; }
+    .switch-input:checked + .switch::after { transform: translateX(20px); }
+    .switch-input:focus-visible + .switch { outline: 3px solid #93c5fd; outline-offset: 3px; }
+
+    /* Summary (left) | message (center) | risk (right) */
+    .dashboard {
+      display: grid;
+      grid-template-columns: 230px 1fr 230px;
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .panel {
+      padding: 16px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 10px 0;
+      font-size: 0.9rem;
+    }
+
+    .total {
+      border-top: 1px solid #ccc;
+      padding-top: 12px;
+      font-weight: 700;
+    }
+
+    .risk-block + .risk-block {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #ddd;
+    }
+
+    .risk-block h3 { font-size: 0.85rem; margin: 0 0 4px; }
+    .risk-details { font-size: 0.8rem; color: #666; }
+    .risk-score { font-size: 1.6rem; font-weight: 700; margin: 4px 0; }
+    .status { font-size: 0.75rem; color: #777; }
+
+    /* Center message */
+    .advice {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 6px;
+    }
+
+    .advice-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #777;
+    }
+
+    .advice-label:empty { display: none; }
+
+    .advice-message {
+      font-size: 1.1rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .advice[data-level="low"]  { border-color: #16a34a; }
+    .advice[data-level="mid"]  { border-color: #d97706; }
+    .advice[data-level="high"] { border-color: #dc2626; }
+    .advice[data-level="low"]  .advice-label { color: #16a34a; }
+    .advice[data-level="mid"]  .advice-label { color: #d97706; }
+    .advice[data-level="high"] .advice-label { color: #dc2626; }
+
+    @media (max-width: 760px) {
+      .dashboard { grid-template-columns: 1fr; }
+      .advice { order: -1; min-height: 120px; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Your Energy Mate</h1>
+
+  <div class="narrow">
+    <div class="section">
+      <label for="houseNumber">House Number</label>
+      <div class="house-input">
+        <span>MAC</span>
+        <input
+          type="number"
+          id="houseNumber"
+          min="2"
+          max="5567"
+          step="1"
+          placeholder="2 – 5567"
+          required
+        />
+      </div>
+    </div>
+
+    <div class="section">
+      <label for="usage">Base household consumption (kWh)</label>
+      <input type="range" id="usage" min="0" max="250" step="1" value="100" />
+      <div class="value"><span id="usageValue">0.500</span> kWh</div>
+    </div>
+
+    <div class="section">
+      <h2>Additional appliances</h2>
+
+      <label class="appliance">
+        <span class="appliance-details">
+          <span class="appliance-name">Air Conditioner</span>
+          <span class="appliance-usage">1 hour · +1.000 kWh</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="ac" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <label class="appliance">
+        <span class="appliance-details">
+          <span class="appliance-name">Washing Machine</span>
+          <span class="appliance-usage">45 minutes · +0.375 kWh</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="washing" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <label class="appliance">
+        <span class="appliance-details">
+          <span class="appliance-name">Iron Box</span>
+          <span class="appliance-usage">15 minutes · +0.250 kWh</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="iron" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="dashboard">
+
+    <!-- Left corner: consumption summary -->
+    <div class="panel">
+      <h2>Consumption summary</h2>
+
+      <div class="summary-row">
+        <span>Base</span>
+        <strong id="baseUsage">0.500</strong>
+      </div>
+
+      <div class="summary-row">
+        <span>Additional</span>
+        <strong id="addedUsage">0.000</strong>
+      </div>
+
+      <div class="summary-row total">
+        <span>Projected</span>
+        <strong id="projectedUsage">0.500</strong>
+      </div>
+    </div>
+
+    <!-- Center: final message -->
+    <div class="panel advice" id="advice" data-level="none" aria-live="polite">
+      <div class="advice-label" id="adviceLabel"></div>
+      <div class="advice-message" id="adviceMessage">Enter your house number</div>
+    </div>
+
+    <!-- Right corner: risk assessment -->
+    <div class="panel">
+      <h2>Risk assessment</h2>
+
+      <div class="risk-block">
+        <h3>Without additional appliances</h3>
+        <div class="risk-details"><span id="baseRiskUsage">0.500</span> kWh</div>
+        <div class="risk-score" id="baseRisk">--</div>
+        <div class="status" id="baseStatus">Initializing...</div>
+      </div>
+
+      <div class="risk-block">
+        <h3>With additional appliances</h3>
+        <div class="risk-details"><span id="projectedRiskUsage">0.500</span> kWh</div>
+        <div class="risk-score" id="projectedRisk">--</div>
+        <div class="status" id="projectedStatus">Initializing...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/js/app.js"></script>
+
+</body>
+</html>

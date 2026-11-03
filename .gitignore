@@ -1,0 +1,44 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---------- Data (large; never commit) ----------
+# Keep the folders in git with a .gitkeep, ignore everything inside them.
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.csv
+*.pkl
+
+# ---------- Model artifacts ----------
+# energy_ann.keras and preprocessing.json are small and ARE committed so the
+# app runs without retraining. Uncomment the next two lines to stop tracking them.
+# models/ann/saved_model/
+# models/ann/preprocessing/
+
+# ---------- MATLAB ----------
+*.asv
+*.m~
+*.mat
+slprj/
+matlab_crash_dump*
+
+# ---------- Editors / OS ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------- Claude Code (personal settings) ----------
+.claude/settings.local.json
+
+# ---------- Logs / env ----------
+*.log
+.env

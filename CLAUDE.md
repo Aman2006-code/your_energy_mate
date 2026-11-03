@@ -1,63 +1,49 @@
-# Instructions for Claude
+# CLAUDE.md
 
-This is a college project called **Your Energy Mate**.
+Your Energy Mate: ANN (expected hourly kWh) + MATLAB Mamdani fuzzy system (risk score) behind a small Python server and a plain HTML/JS page. See README.md for the full overview.
 
-## What we are building
+## Commands
 
-A simple household electricity dashboard. It helps a user:
-- Enter current household electricity usage.
-- See expected usage predicted by an ANN model.
-- See whether the current tariff period is peak, normal or off-peak.
-- Try switching heavy appliances on and off.
-- See a simple electricity-risk recommendation.
+Run everything from the project root, with the venv active.
 
-## Project structure
+```bash
+pip install -r requirements.txt                       # plus matlabengine, see requirements.txt
+python models/ann/train.py --data-dir data/raw/       # train the ANN
+python backend/server.py                              # serve http://127.0.0.1:8000
+python -m models.ann.predict --household MAC000002 --datetime "2026-11-10 12:30:00"
+python -m models.ann.live_predict                     # interactive check of consumption % and tariff
+```
 
-- `frontend/` — HTML, CSS and JavaScript UI.
-- `backend/` — Python backend and connections between components.
-- `models/ann/` — trained Python ANN model and its preprocessing files.
-- `models/fuzzy/` — MATLAB fuzzy model files, including `EnergyRisk.fis`.
-- `data/` — datasets and sample data.
-- `docs/` — project notes and documentation.
+`predict.py` and `live_predict.py` use relative imports, so run them with `python -m ...` from the root, not as plain scripts. `train.py` is run as a script and imports `preprocess` directly.
 
-## Important decisions
+Fuzzy system: edit and run `models/fuzzy/build_EnergyRisk.m` in MATLAB to regenerate `EnergyRisk.fis`. There is no test suite yet.
 
-- Keep the project simple. Do not add unnecessary frameworks, packages or features.
-- The frontend is planned as plain HTML, CSS and JavaScript.
-- The ANN is written in Python.
-- The fuzzy system is made in MATLAB.
-- The Python backend connects the frontend, ANN and MATLAB fuzzy system.
-- AC, iron box and washing machine are treated as equivalent heavy appliances in the frontend simulation. Use the same assumed load increase for all three.
-- Appliance switching is simulated. Do not claim that the application physically controls appliances.
-- Do not add appliance wattage or sanctioned-load as extra fuzzy inputs.
+## Layout
 
-## Fuzzy system interface
+- `backend/server.py` : `ThreadingHTTPServer` serving `frontend/` and `POST /api/risk`. Starts one shared MATLAB engine.
+- `models/ann/` : `preprocess.py` (cleaning and features), `train.py`, `predict.py` (one 30-minute interval), `live_predict.py` (hourly consumption % and tariff code).
+- `models/fuzzy/` : `build_EnergyRisk.m` builds the FIS, `evaluateEnergyRisk.m` evaluates it, `EnergyRisk.fis` is the generated file.
+- `frontend/index.html`, `frontend/js/app.js` : vanilla HTML/CSS/JS, no framework, no build step.
 
-The MATLAB FIS has exactly two inputs and one output:
+## Things that must stay in sync
 
-1. `ConsumptionPct` = actual consumption divided by ANN-predicted consumption, multiplied by 100.
-2. `Tariff` = `0` for off-peak, `1` for normal and `2` for peak.
-3. `RiskScore` = a numerical risk score from 0 to 100.
+- **Tariff hours** (06–18 Normal=1, 18–22 Peak=2, else Off-peak=0, Asia/Kolkata) live in `live_predict.py` and are mirrored in `getTariffCode()` in `app.js`. Change both.
+- **Risk cut-offs** in `app.js` (`RISK_MODERATE` 27, `RISK_HIGH` 55, `RISK_VERY_HIGH` 80) come from the output membership functions in `EnergyRisk.fis`. Update them if those change.
+- **Fuzzy changes**: edit `build_EnergyRisk.m` and re-run it. Never hand-edit `EnergyRisk.fis`.
+- **ANN features**: the order of `FEATURE_NAMES` in `preprocess.py` is baked into the trained model. Changing features means retraining and committing a new `energy_ann.keras` and `preprocessing.json` together.
+- **Household IDs** are `MAC` + 6 digits (e.g. `MAC000002`). The UI accepts 2–5567, but the model only knows the households it was trained on.
 
-The frontend calculates the consumption percentage and selects the tariff code. The Python backend passes those two values to MATLAB and receives the risk score.
+## ANN data rules (do not break)
 
-If the ANN prediction is zero or unavailable, do not divide by zero or invent a prediction. Show a clear message instead.
+- Never replace missing or invalid kWh with 0; drop those rows.
+- Split chronologically (train oldest, test newest), never randomly.
+- Fit the scaler on training data only.
+- Calendar features only; the target is never an input.
+- Never modify raw CSV files.
 
-## Tariff time windows
+## Conventions
 
-The project's current KSEB ToD assumptions are:
-- Normal: 6:00 AM to 6:00 PM.
-- Peak: 6:00 PM to 10:00 PM.
-- Off-peak: 10:00 PM to 6:00 AM.
-
-Keep tariff periods and rates configurable. Do not claim that a tariff applies to every household; its applicability should be checked against the user's connection and the latest KSEB rules.
-
-## When making changes
-
-- First inspect the existing files. Do not assume a folder is already implemented just because it exists.
-- Only change the part of the project requested.
-- Keep the existing project structure unless there is a clear reason to change it.
-- Use sample data only when clearly labelled as sample data.
-- Never present mock predictions or mock fuzzy results as real model outputs.
-- Keep names and input formats consistent between the frontend, Python backend and MATLAB model.
-- Explain briefly what you changed and which parts still use sample data.
+- Keep the frontend minimal: plain HTML and CSS, thin borders, neutral colours, colour only for risk level. No frameworks or CDNs.
+- Keep the server bound to 127.0.0.1.
+- Do not commit anything in `data/` or any `.csv`/`.pkl`. The small model files in `models/ann/saved_model` and `models/ann/preprocessing` are committed on purpose.
+- Python style: standard library first, short docstrings, clear error messages for the UI (the frontend shows `error` text directly).
